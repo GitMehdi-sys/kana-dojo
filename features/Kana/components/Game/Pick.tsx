@@ -1,6 +1,6 @@
 'use client';
 import clsx from 'clsx';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { kana } from '@/features/Kana/data/kana';
 import useKanaStore from '@/features/Kana/store/useKanaStore';
 import { CircleCheck, CircleX } from 'lucide-react';
@@ -16,6 +16,7 @@ import Stars from '@/shared/components/Game/Stars';
 import { useCrazyModeTrigger } from '@/features/CrazyMode/hooks/useCrazyModeTrigger';
 import { getGlobalAdaptiveSelector } from '@/shared/lib/adaptiveSelection';
 import { useSmartReverseMode } from '@/shared/hooks/useSmartReverseMode';
+import { useProgressiveDifficulty } from '@/shared/hooks/useProgressiveDifficulty';
 
 const random = new Random();
 
@@ -29,6 +30,17 @@ interface PickGameProps {
 const PickGame = ({ isHidden }: PickGameProps) => {
   const { isReverse, decideNextMode, recordWrongAnswer } =
     useSmartReverseMode();
+  const {
+    optionCount,
+    recordCorrect: recordDifficultyCorrect,
+    recordWrong: recordDifficultyWrong
+  } = useProgressiveDifficulty({
+    minOptions: 3,
+    maxOptions: 6,
+    streakPerLevel: 5,
+    wrongsToDecrease: 2
+  });
+
   const score = useStatsStore(state => state.score);
   const setScore = useStatsStore(state => state.setScore);
 
@@ -95,14 +107,15 @@ const PickGame = ({ isHidden }: PickGameProps) => {
     ? selectedPairs1[correctRomajiCharReverse]
     : selectedPairs2[correctRomajiCharReverse];
 
-  // Get incorrect options based on mode
-  const getIncorrectOptions = () => {
+  // Get incorrect options based on mode and current option count
+  const getIncorrectOptions = (count: number) => {
+    const incorrectCount = count - 1; // One slot is for the correct answer
     if (!isReverse) {
       const { [correctKanaChar]: _, ...incorrectPairs } = selectedPairs;
       void _;
       return [...Object.values(incorrectPairs)]
         .sort(() => random.real(0, 1) - 0.5)
-        .slice(0, 2);
+        .slice(0, incorrectCount);
     } else {
       const { [correctRomajiCharReverse]: _, ...incorrectPairs } = random.bool()
         ? selectedPairs1
@@ -110,41 +123,42 @@ const PickGame = ({ isHidden }: PickGameProps) => {
       void _;
       return [...Object.values(incorrectPairs)]
         .sort(() => random.real(0, 1) - 0.5)
-        .slice(0, 2);
+        .slice(0, incorrectCount);
     }
   };
 
-  const randomIncorrectOptions = getIncorrectOptions();
-
-  const [shuffledVariants, setShuffledVariants] = useState(
-    isReverse
-      ? [correctKanaCharReverse, ...randomIncorrectOptions].sort(
+  const [shuffledVariants, setShuffledVariants] = useState(() => {
+    const incorrectOptions = getIncorrectOptions(optionCount);
+    return isReverse
+      ? [correctKanaCharReverse, ...incorrectOptions].sort(
           () => random.real(0, 1) - 0.5
         )
-      : [correctRomajiChar, ...randomIncorrectOptions].sort(
+      : [correctRomajiChar, ...incorrectOptions].sort(
           () => random.real(0, 1) - 0.5
-        )
-  );
+        );
+  });
 
   const [feedback, setFeedback] = useState(<>{'feedback ~'}</>);
   const [wrongSelectedAnswers, setWrongSelectedAnswers] = useState<string[]>(
     []
   );
 
+  // Update shuffled variants when correct character or option count changes
   useEffect(() => {
+    const incorrectOptions = getIncorrectOptions(optionCount);
     setShuffledVariants(
       isReverse
-        ? [correctKanaCharReverse, ...getIncorrectOptions()].sort(
+        ? [correctKanaCharReverse, ...incorrectOptions].sort(
             () => random.real(0, 1) - 0.5
           )
-        : [correctRomajiChar, ...getIncorrectOptions()].sort(
+        : [correctRomajiChar, ...incorrectOptions].sort(
             () => random.real(0, 1) - 0.5
           )
     );
     if (isReverse) {
       speedStopwatch.start();
     }
-  }, [isReverse ? correctRomajiCharReverse : correctKanaChar]);
+  }, [isReverse ? correctRomajiCharReverse : correctKanaChar, optionCount]);
 
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
@@ -161,11 +175,19 @@ const PickGame = ({ isHidden }: PickGameProps) => {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [shuffledVariants.length]);
 
   useEffect(() => {
     if (isHidden) speedStopwatch.pause();
   }, [isHidden]);
+
+  // Split variants into rows: first row always has 3, second row has the rest (0-3)
+  const { topRow, bottomRow } = useMemo(() => {
+    return {
+      topRow: shuffledVariants.slice(0, 3),
+      bottomRow: shuffledVariants.slice(3)
+    };
+  }, [shuffledVariants]);
 
   if (!selectedKana || selectedKana.length === 0) {
     return null;
@@ -245,6 +267,8 @@ const PickGame = ({ isHidden }: PickGameProps) => {
     adaptiveSelector.updateCharacterWeight(correctChar, true);
     // Smart algorithm decides next mode based on performance
     decideNextMode();
+    // Progressive difficulty - track correct answer
+    recordDifficultyCorrect();
   };
 
   const handleWrongAnswer = (selectedChar: string) => {
@@ -263,6 +287,8 @@ const PickGame = ({ isHidden }: PickGameProps) => {
     adaptiveSelector.updateCharacterWeight(currentChar, false);
     // Reset consecutive streak without changing mode (avoids rerolling the question)
     recordWrongAnswer();
+    // Progressive difficulty - track wrong answer
+    recordDifficultyWrong();
   };
 
   const displayChar = isReverse ? correctRomajiCharReverse : correctKanaChar;
@@ -278,19 +304,10 @@ const PickGame = ({ isHidden }: PickGameProps) => {
       <GameIntel gameMode={gameMode} feedback={feedback} />
       <div className='flex flex-row items-center gap-1'>
         <p className='text-8xl sm:text-9xl font-medium'>{displayChar}</p>
-        {/* 
-        {!isReverse && (
-          <SSRAudioButton
-            text={displayChar}
-            variant='icon-only'
-            size='sm'
-            className='bg-[var(--card-color)] text-[var(--secondary-color)]'
-          />
-        )}
- */}
       </div>
+      {/* First row - always 3 options */}
       <div className='flex flex-row w-full gap-5 sm:gap-0 sm:justify-evenly'>
-        {shuffledVariants.map((variantChar, i) => (
+        {topRow.map((variantChar: string, i: number) => (
           <button
             ref={elem => {
               buttonRefs.current[i] = elem;
@@ -318,11 +335,48 @@ const PickGame = ({ isHidden }: PickGameProps) => {
                   : 'text-[var(--secondary-color)]'
               )}
             >
-              {i + 1 === 1 ? '1' : i + 1 === 2 ? '2' : '3'}
+              {i + 1}
             </span>
           </button>
         ))}
       </div>
+      {/* Second row - progressively fills with 1-3 additional options */}
+      {bottomRow.length > 0 && (
+        <div className='flex flex-row w-full gap-5 sm:gap-0 sm:justify-evenly'>
+          {bottomRow.map((variantChar: string, i: number) => (
+            <button
+              ref={elem => {
+                buttonRefs.current[3 + i] = elem;
+              }}
+              key={variantChar + i}
+              type='button'
+              disabled={wrongSelectedAnswers.includes(variantChar)}
+              className={clsx(
+                'text-5xl font-semibold pb-6 pt-3 w-full sm:w-1/5 flex flex-row justify-center items-center gap-1',
+                buttonBorderStyles,
+                'border-b-4 ',
+                wrongSelectedAnswers.includes(variantChar) &&
+                  'hover:bg-[var(--card-color)] hover:border-[var(--border-color)] text-[var(--border-color)]',
+                !wrongSelectedAnswers.includes(variantChar) &&
+                  'text-[var(--secondary-color)] border-[var(--secondary-color)]/50 hover:border-[var(--secondary-color)]'
+              )}
+              onClick={() => handleOptionClick(variantChar)}
+            >
+              <span>{variantChar}</span>
+              <span
+                className={clsx(
+                  'hidden lg:inline text-xs rounded-full bg-[var(--border-color)]  px-1',
+                  wrongSelectedAnswers.includes(variantChar)
+                    ? 'text-[var(--border-color)]'
+                    : 'text-[var(--secondary-color)]'
+                )}
+              >
+                {4 + i}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       <Stars />
     </div>
   );
