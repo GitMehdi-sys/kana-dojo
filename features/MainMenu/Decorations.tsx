@@ -250,6 +250,8 @@ const Decorations = ({
       // Use cached kanji chars to avoid refetching on every mount
       const chars = await loadKanjiChars();
 
+      if (!isMounted) return;
+
       const columns = 28;
       const rows = 10;
       const totalCells = columns * rows;
