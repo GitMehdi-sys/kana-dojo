@@ -59,8 +59,8 @@ export default function StreakProgress() {
                 }}
                 colorScheme={isSelected ? 'main' : undefined}
                 borderColorScheme={isSelected ? 'main' : undefined}
-                borderBottomThickness={isSelected ? 6 : 0}
-                borderRadius='2xl'
+                borderBottomThickness={isSelected ? 8 : 0}
+                borderRadius='3xl'
                 className={
                   isSelected
                     ? 'w-auto px-5 py-2.5 text-sm'

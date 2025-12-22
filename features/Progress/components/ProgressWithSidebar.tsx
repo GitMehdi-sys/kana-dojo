@@ -54,7 +54,7 @@ const ProgressWithSidebar = () => {
                 }}
                 colorScheme={isSelected ? 'main' : undefined}
                 borderColorScheme={isSelected ? 'main' : undefined}
-                borderBottomThickness={isSelected ? 6 : 0}
+                borderBottomThickness={isSelected ? 8 : 0}
                 className={cn(
                   'w-auto gap-1.5 px-5 py-2.5 text-sm sm:gap-2',
                   !isSelected &&
