@@ -104,7 +104,7 @@ const CollapsibleSection = ({
         )}
 
         {/* Title */}
-        <span>{title}</span>
+        <span className='text-(--secondary-color)'>{title}</span>
       </button>
 
       {/* Content with smooth height animation using CSS grid trick */}

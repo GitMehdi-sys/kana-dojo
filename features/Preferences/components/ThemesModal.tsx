@@ -204,7 +204,7 @@ export default function ThemesModal({ open, onOpenChange }: ThemesModalProps) {
                 const Icon = group.icon;
                 return (
                   <div key={group.name} className='space-y-3'>
-                    <div className='flex items-center gap-2 text-lg font-medium text-(--main-color)'>
+                    <div className='flex items-center gap-2 text-lg font-medium text-(--secondary-color)'>
                       <Icon size={20} />
                       {group.name}
                       {/* <span className='text-sm font-normal text-(--secondary-color)'>
